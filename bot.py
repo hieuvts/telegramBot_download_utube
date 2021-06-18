@@ -1,101 +1,116 @@
 from __future__ import unicode_literals
 import logging
-from telegram import Update, ForceReply
-from telegram.ext import Updater, CommandHandler, MessageHandler, CallbackContext
-from telegram.files.video import Video
-import youtube_dl
+from telegram import Update
+from telegram.ext import Updater, CommandHandler, CallbackContext
+
 import os
 import sys
-import requests
-import json
-from datetime import datetime
 import validators
+import getCovid19Stat
+import getYoutubeDL
+#import getInstagram
 
-youtube_video_path = "./video/video.mp4"
-covid19_VN_stats_api = "https://api.apify.com/v2/key-value-stores/EaCBL1JNntjR3EakU/records/LATEST?disableRedirect=true"
+path = "./video/video.mp4"
+# saved_reel_path = "./insta/reel.mp4"
+# saved_hashtag_path = "./insta/"
+# saved_profile_path = "./insta/"
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
+
 def isValidCommand(args):
-    print("args", args[0])
     if (len(args) > 2):
-        print("Args > 2")
         return False
     elif (validators.url(args[0])):
         return True
     return True
-# Get stats from Covid19api.com
-def getResponse(url):
-    response = requests.get(url)
-    data = json.loads(response.text)
-    return data
 
-def compose_message(data):
-    lastUpdated = data['lastUpdatedAtApify'].split('T')
-    activeCase = data['treated']
-    deathsCase = data['deceased']
-    confirmedCase = data['infected']
-    recoveredCase = data['recovered']
-
-    lastUpdated = datetime.strptime(lastUpdated[0], '%Y-%m-%d')
-    lastUpdated = lastUpdated.strftime("%d/%m/%Y")
-
-
-    my_message = '''
-    🗓  Cập nhật: {}
-🦠  Số ca nhiễm: {}
-<strong><em>⚰️  Số ca tử vong: {}</em></strong>
-✅  Số ca hồi phục: {}
-<em>🚨  Số ca đang điều trị: {}</em>
-    '''.format(lastUpdated, confirmedCase, deathsCase, recoveredCase, activeCase)
-    return my_message
-
-
-def downloadVideo(url):
-    if (os.path.exists(youtube_video_path)):
-        os.remove(youtube_video_path)
-        print("Removed old video!")
-    ydl_opts = {'outtmpl': youtube_video_path}
-    with youtube_dl.YoutubeDL(ydl_opts) as ydl:
-        ydl.download([url])
 
 def start(update: Update, context: CallbackContext) -> None:
     """Send a message when the command /start is issued."""
     user = update.effective_user
     update.message.reply_markdown_v2("Hi {}".format(user.mention_markdown_v2()),
-    )
+                                     )
+
+# /vid url -->> Get Video using youtube-dl
+
 
 def getVideo(update: Update, context: CallbackContext):
+    chat_id = update.message.chat_id
     if (isValidCommand(context.args)):
-        downloadVideo(context.args[0])
-        if (os.path.exists(youtube_video_path)):
-            video = open(youtube_video_path, 'rb')
+        # Get message_id of the message below
+        try:
+            msg_status_downloading = context.bot.send_message(
+                chat_id=chat_id, text="Downloading your video...")
+        except Exception as e:
+            context.bot.send_message(
+                chat_id=chat_id, text="Error: {}".format(e))
+
+        getYoutubeDL.getVideo(context.args[0])
+        
+        if (os.path.exists(path)):
+            video = open(path, 'rb')
+            #print(msg_status_downloading)
             update.message.reply_video(video=video)
+            context.bot.delete_message(
+            chat_id=chat_id, message_id=msg_status_downloading['message_id'])
+
         print("Video sent")
     else:
         update.message.reply_html(text='''<b>URL is invalid</b>''')
+
+# /cv --> Get Covid19 Stats (in Vietnam)
 def cv(update: Update, context: CallbackContext):
-    data = getResponse(covid19_VN_stats_api)
-    #Compose a message to send to telegram
-    message = compose_message(data)
+    msg = getCovid19Stat.getCovid19Stats()
     update.message.reply_html(
-        text=message,
+        text=msg,
     )
+
+# def ig(update: Update, context: CallbackContext):
+#     chat_id = update.message.chat_id
+#     if (isValidCommand(context.args)):
+#         # Get message_id of the message below
+#         try:
+#             msg_status_downloading = context.bot.send_message(
+#                 chat_id=chat_id, text="Downloading Instagram stuffs...")
+#         except Exception as e:
+#             context.bot.send_message(
+#                 chat_id=chat_id, text="Error: {}".format(e))
+
+#         getInstagram.getInsta(context.args[0])
+        
+#         if (os.path.exists(path)):
+#             video = open(saved_reel_path, 'rb')
+#             #print(msg_status_downloading)
+#             update.message.reply_video(video=video)
+#             context.bot.delete_message(
+#             chat_id=chat_id, message_id=msg_status_downloading['message_id'])
+
+#         print("Insta stuffs sent")
+#     else:
+#         update.message.reply_html(text='''<b>URL is invalid</b>''')
+
+def test(update: Update, context: CallbackContext):
+    chat_id = update.message.chat_id
+    context.bot.send_message(chat_id=chat_id, text="HI")
 
 
 def main() -> None:
-    updater = Updater(str(sys.argv[1]), use_context=True)
+    # Execute "python3 bot.py <BOT_TOKEN>"
+    #print("TOKEN ", sys.argv[1])
+    BOT_TOKEN = str(sys.argv[1])
+    updater = Updater(BOT_TOKEN, use_context=True)
     dispatcher = updater.dispatcher
-
     dispatcher.add_handler(CommandHandler("start", start))
     dispatcher.add_handler(CommandHandler("vid", getVideo))
     dispatcher.add_handler(CommandHandler("cv", cv))
+    dispatcher.add_handler(CommandHandler("tt", test))
     # Start the Bot
     updater.start_polling()
-    #CTRL + C to STOP
+    # CTRL + C to STOP
     updater.idle()
 
 
